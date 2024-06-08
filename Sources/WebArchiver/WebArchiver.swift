@@ -34,6 +34,34 @@ public enum ArchivingError: LocalizedError {
 
 public class WebArchiver {
     
+    public static func archiveWithMainResource(url: URL, htmlContent: String, includeJavascript: Bool = true, skipCache: Bool = false, completion: @escaping (ArchivingResult) -> ()) {
+        
+        let session = ArchivingSession(cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, cookies: [], completion: completion)
+        let mainResource = WebArchiveResource(url: url, data: htmlContent.data(using: .utf8)!, mimeType: "text/html")
+        var archive = WebArchive(resource: mainResource)
+
+        do {
+            let references = try self.extractHTMLReferences(from: mainResource, includeJavascript: includeJavascript)
+            for reference in references {
+                session.load(url: reference, fallback: archive) { resource in
+                    archive.addSubresource(resource)
+                    if reference.pathExtension == "css" {
+                        let cssReferences = try self.extractCSSReferences(from: resource)
+                        for cssReference in cssReferences {
+                            session.load(url: cssReference, fallback: archive) { cssResource in
+                                archive.addSubresource(cssResource)
+                                return archive
+                            }
+                        }
+                    }
+                    return archive
+                }
+            }
+        }catch {
+        }
+    }
+        
+
     public static func archive(url: URL, cookies: [HTTPCookie] = [], includeJavascript: Bool = true, skipCache: Bool = false, completion: @escaping (ArchivingResult) -> ()) {
         
         guard let scheme = url.scheme, scheme == "https" else {
